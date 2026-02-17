@@ -1,0 +1,245 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ---------------------------------------------------------------------------
+// Pharmacy chains / locations
+// ---------------------------------------------------------------------------
+
+model Pharmacy {
+  id        String   @id @default(cuid())
+  chain     Chain
+  name      String
+  address   String
+  commune   String
+  region    String
+  phone     String?
+  latitude  Float?
+  longitude Float?
+  isOnDuty  Boolean  @default(false)
+  externalId String? // ID from MINSAL Farmanet or chain's own system
+
+  prices    Price[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([chain])
+  @@index([commune])
+  @@index([latitude, longitude])
+}
+
+enum Chain {
+  CRUZ_VERDE
+  SALCOBRAND
+  AHUMADA
+  SIMILARES
+  OTHER
+}
+
+// ---------------------------------------------------------------------------
+// Medications catalog
+// ---------------------------------------------------------------------------
+
+model Medication {
+  id              String  @id @default(cuid())
+  // Canonical name (generic/INN)
+  genericName     String
+  // Commercial/brand name as sold
+  commercialName  String?
+  activePrinciple String?
+  laboratory      String?
+  // e.g. "500 mg", "10 mg/5 mL"
+  concentration   String?
+  // e.g. "Comprimido", "Jarabe", "Ampolla"
+  presentation    String?
+  // e.g. "Caja x 30 comprimidos"
+  quantity        String?
+  // Controlled substance flag
+  controlled      Boolean @default(false)
+  // Source dataset: MINSAL Tu Farmacia, scraper, etc.
+  source          MedicationSource @default(SCRAPER)
+  // External IDs for deduplication
+  minsalCode      String? @unique
+  ean             String?
+
+  prices     Price[]
+  favorites  Favorite[]
+  alerts     PriceAlert[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([genericName])
+  @@index([commercialName])
+  @@index([activePrinciple])
+  @@index([laboratory])
+}
+
+enum MedicationSource {
+  MINSAL_TU_FARMACIA
+  MINSAL_FARMANET
+  SCRAPER
+}
+
+// ---------------------------------------------------------------------------
+// Prices (time-series)
+// ---------------------------------------------------------------------------
+
+model Price {
+  id           String   @id @default(cuid())
+  medicationId String
+  pharmacyId   String
+  price        Decimal  @db.Decimal(10, 2)
+  // null = assumed in stock; explicit flag from scraper when available
+  inStock      Boolean?
+  scrapedAt    DateTime @default(now())
+
+  medication Medication @relation(fields: [medicationId], references: [id], onDelete: Cascade)
+  pharmacy   Pharmacy   @relation(fields: [pharmacyId], references: [id], onDelete: Cascade)
+
+  @@index([medicationId, scrapedAt(sort: Desc)])
+  @@index([pharmacyId, scrapedAt(sort: Desc)])
+  // Latest price per (medication, pharmacy) — used in queries
+  @@index([medicationId, pharmacyId, scrapedAt(sort: Desc)])
+}
+
+// ---------------------------------------------------------------------------
+// Users & Auth (NextAuth compatible)
+// ---------------------------------------------------------------------------
+
+model User {
+  id            String    @id @default(cuid())
+  name          String?
+  email         String    @unique
+  emailVerified DateTime?
+  image         String?
+  password      String?   // hashed; null for OAuth-only users
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  accounts    Account[]
+  sessions    Session[]
+  favorites   Favorite[]
+  alerts      PriceAlert[]
+  searches    SearchHistory[]
+
+  @@index([email])
+}
+
+// NextAuth Account model
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+// NextAuth Session model
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+// NextAuth VerificationToken model
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+// ---------------------------------------------------------------------------
+// User features
+// ---------------------------------------------------------------------------
+
+model Favorite {
+  id           String   @id @default(cuid())
+  userId       String
+  medicationId String
+  createdAt    DateTime @default(now())
+
+  user       User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  medication Medication @relation(fields: [medicationId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, medicationId])
+  @@index([userId])
+}
+
+model PriceAlert {
+  id           String   @id @default(cuid())
+  userId       String
+  medicationId String
+  // Alert fires when price drops below this threshold
+  targetPrice  Decimal  @db.Decimal(10, 2)
+  // Optional: restrict alert to specific chain
+  chain        Chain?
+  active       Boolean  @default(true)
+  // Track last notification to avoid spam
+  lastNotified DateTime?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  user       User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  medication Medication @relation(fields: [medicationId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([medicationId, active])
+}
+
+model SearchHistory {
+  id        String   @id @default(cuid())
+  userId    String
+  query     String
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt(sort: Desc)])
+}
+
+// ---------------------------------------------------------------------------
+// Scraper monitoring
+// ---------------------------------------------------------------------------
+
+model ScraperRun {
+  id             String      @id @default(cuid())
+  chain          Chain
+  status         ScraperStatus
+  startedAt      DateTime    @default(now())
+  finishedAt     DateTime?
+  recordsUpdated Int?
+  errorMessage   String?     @db.Text
+
+  @@index([chain, startedAt(sort: Desc)])
+}
+
+enum ScraperStatus {
+  RUNNING
+  SUCCESS
+  FAILED
+  PARTIAL
+}
