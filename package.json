@@ -17,6 +17,8 @@
   "dependencies": {
     "@prisma/adapter-pg": "^7.4.0",
     "@prisma/client": "^7.4.0",
+    "clsx": "^2.1.1",
+    "lucide-react": "^0.574.0",
     "next": "16.1.6",
     "next-auth": "^5.0.0-beta.30",
     "pg": "^8.18.0",
@@ -25,7 +27,9 @@
     "prisma": "^7.4.0",
     "puppeteer-extra-plugin-stealth": "^2.11.2",
     "react": "19.2.3",
-    "react-dom": "19.2.3"
+    "react-dom": "19.2.3",
+    "recharts": "^3.7.0",
+    "tailwind-merge": "^3.4.1"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
