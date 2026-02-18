@@ -34,7 +34,7 @@ export default async function AlertsPage() {
           </Link>
         </div>
       ) : (
-        <AlertsClient initialAlerts={alerts.map((a) => ({
+        <AlertsClient initialAlerts={alerts.map((a: typeof alerts[number]) => ({
           id: a.id,
           medicationId: a.medicationId,
           medicationName: a.medication.commercialName ?? a.medication.genericName,
