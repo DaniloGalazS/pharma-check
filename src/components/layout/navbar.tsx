@@ -2,7 +2,10 @@ import Link from 'next/link'
 import { auth, signOut } from '@/auth'
 
 export async function Navbar() {
-  const session = await auth()
+  let session = null
+  try {
+    session = await auth()
+  } catch {}
   const user = session?.user
 
   return (

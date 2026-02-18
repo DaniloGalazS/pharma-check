@@ -69,6 +69,11 @@ async function runChain(chain: Chain): Promise<{ inserted: number; errors: numbe
   }
 }
 
+// Vercel Cron sends GET requests — delegate to the same logic
+export async function GET(req: NextRequest): Promise<NextResponse> {
+  return POST(req)
+}
+
 export async function POST(req: NextRequest): Promise<NextResponse> {
   if (!isAuthorized(req)) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
